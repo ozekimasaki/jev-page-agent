@@ -128,6 +128,10 @@
 					stepDelay: 0.1,
 					verbose: true,
 					onAskUser: async (q) => window.prompt(q) ?? '',
+					// Snapshot only the target form — the sidebar controls
+					// (provider select, task textarea, run/stop) must never be
+					// element candidates for a real evaluator either.
+					root: document.querySelector('.target'),
 				}
 				if (provider === 'mock') config.evaluate = mockEvaluate
 				else if (provider === 'typesafe')
