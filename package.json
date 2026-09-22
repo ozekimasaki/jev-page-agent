@@ -30,7 +30,7 @@
 		"build": "tsc -p tsconfig.json",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"test": "vitest run",
-		"demo": "npx serve demo -l 8080"
+		"demo": "npm run build && npx serve . -l 8080"
 	},
 	"devDependencies": {
 		"jsdom": "^24.1.0",

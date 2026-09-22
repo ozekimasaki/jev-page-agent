@@ -46,7 +46,7 @@ npm install
 npm run build      # tsc → dist/
 npm test           # vitest (jsdom)
 npm run typecheck
-npm run demo       # serves demo/ at http://localhost:8080
+npm run demo       # builds, serves repo root at http://localhost:8080
 ```
 
 ## Usage
@@ -151,7 +151,7 @@ Cost note (per 1M tokens, official prices): **Qwen3.8-Flash $0.15 in / $0.47 out
 
 ## Demo
 
-`npm run demo` then open `http://localhost:8080`. Pick a provider (a deterministic `mock` evaluator runs fully offline), enter a task, and watch each step's chosen action + confidence.
+`npm run demo` then open `http://localhost:8080/demo/`. Pick a provider (a deterministic `mock` evaluator runs fully offline), enter a task, and watch each step's chosen action + confidence.
 
 ## Layout
 
