@@ -42,7 +42,7 @@ export function typesafeTransport(config: TypeSafeTransportConfig): JevEvaluator
 			body: JSON.stringify(body),
 			signal,
 		})
-		return handleResponse(response, body)
+		return (await readJson(response, body)) as JevEvaluateResult
 	}
 }
 
@@ -111,8 +111,4 @@ async function readJson(response: Response, rawRequest: unknown): Promise<unknow
 			cause: error,
 		})
 	}
-}
-
-async function handleResponse(response: Response, rawRequest: unknown): Promise<JevEvaluateResult> {
-	return (await readJson(response, rawRequest)) as JevEvaluateResult
 }

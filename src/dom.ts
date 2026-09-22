@@ -151,7 +151,7 @@ function cap(text: string, max: number): string {
 	return text.length > max ? text.slice(0, max - 3) + '...' : text
 }
 
-function elementLine(index: number, element: HTMLElement): string {
+function elementLine(index: number, element: HTMLElement, flags: { disabled: boolean; scrollable: boolean }): string {
 	const tag = element.tagName.toLowerCase()
 	const attrs: string[] = []
 	for (const name of INCLUDE_ATTRIBUTES) {
@@ -169,15 +169,12 @@ function elementLine(index: number, element: HTMLElement): string {
 	}
 	text = cap(text, MAX_ELEMENT_TEXT)
 
-	const disabled = isDisabled(element)
-	const scrollable = isScrollable(element)
-
 	let line = `[${index}]<${tag}`
 	if (attrs.length) line += ' ' + attrs.join(' ')
-	if (scrollable) line += ' data-scrollable'
+	if (flags.scrollable) line += ' data-scrollable'
 	if (text) line += `>${text}`
 	line += ' />'
-	if (disabled) line += ' (disabled)'
+	if (flags.disabled) line += ' (disabled)'
 	return line
 }
 
@@ -219,15 +216,16 @@ export function snapshotPage(options: SnapshotOptions = {}): PageSnapshot {
 		if (!isVisible(el, view)) continue
 
 		const index = elements.length
-		const line = elementLine(index, el)
+		const flags = { disabled: isDisabled(el), scrollable: isScrollable(el) }
+		const line = elementLine(index, el, flags)
 		elements.push({
 			index,
 			element: el,
 			line,
 			tagName: el.tagName.toLowerCase(),
 			editable: isEditable(el),
-			disabled: isDisabled(el),
-			scrollable: isScrollable(el),
+			disabled: flags.disabled,
+			scrollable: flags.scrollable,
 		})
 		lines.push(line)
 	}

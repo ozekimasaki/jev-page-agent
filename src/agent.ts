@@ -18,9 +18,8 @@ import {
 import { extractAnswerCandidates, extractTextCandidates } from './candidates.js'
 import { snapshotPage, type PageSnapshot } from './dom.js'
 import type { FallbackPlanner, FallbackReason } from './fallback.js'
-import { cloudflareTransport } from './jev/transports.js'
+import { cloudflareTransport, typesafeTransport } from './jev/transports.js'
 import type { JevEvaluator } from './jev/types.js'
-import { typesafeTransport } from './jev/transports.js'
 import {
 	buildPlanRequest,
 	JevPlanError,
@@ -41,7 +40,7 @@ export interface ActionRunContext {
 }
 
 export interface AgentAction extends ActionSpec {
-	run: (params: Record<string, any>, ctx: ActionRunContext) => Promise<string> | string
+	run: (params: Record<string, unknown>, ctx: ActionRunContext) => Promise<string> | string
 }
 
 export interface JevPageAgentConfig {
@@ -176,12 +175,12 @@ export class JevPageAgent extends EventTarget {
 				fetch: c.fetch,
 			})
 		}
-		if (!c.apiKey && !c.evaluate) {
+		if (!c.apiKey) {
 			throw new Error(
 				'[jev-page-agent] missing jev credentials: pass `apiKey` (TypeSafe) or a custom `evaluate` function'
 			)
 		}
-		return typesafeTransport({ apiKey: c.apiKey!, baseURL: c.baseURL, model: c.model, fetch: c.fetch })
+		return typesafeTransport({ apiKey: c.apiKey, baseURL: c.baseURL, model: c.model, fetch: c.fetch })
 	}
 
 	#setStatus(status: AgentStatus): void {
@@ -225,6 +224,8 @@ export class JevPageAgent extends EventTarget {
 		const maxSteps = this.config.maxSteps ?? 20
 		const stepDelay = this.config.stepDelay ?? 0.3
 		const maxConsecutiveErrors = this.config.maxConsecutiveErrors ?? 3
+		// Candidates mined from the task text are static across steps — mine once.
+		const inputCandidates = extractTextCandidates(task, { max: this.config.maxTextCandidates })
 		let consecutiveErrors = 0
 		let step = 0
 		let result: ExecutionResult = { success: false, data: 'not finished', history: this.history }
@@ -255,9 +256,7 @@ export class JevPageAgent extends EventTarget {
 						maxSteps,
 						snapshot,
 						history: stepHistory,
-						inputCandidates: extractTextCandidates(task, {
-							max: this.config.maxTextCandidates,
-						}),
+						inputCandidates,
 						answerCandidates: extractAnswerCandidates(
 							snapshot.pageText,
 							stepHistory

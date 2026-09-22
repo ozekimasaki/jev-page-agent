@@ -37,26 +37,31 @@ function dispatchInputEvents(element: HTMLElement): void {
 	}
 }
 
+/**
+ * Set .value through the prototype setter so frameworks that track the
+ * native setter (React controlled inputs) see the change, then dispatch
+ * input/change events.
+ */
+function setNativeValue(el: HTMLElement, text: string): void {
+	const proto = Object.getPrototypeOf(el)
+	const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set
+	el.focus()
+	if (setter) setter.call(el, text)
+	else (el as HTMLInputElement).value = text
+	dispatchInputEvents(el)
+}
+
 export function inputText(target: IndexedElement, text: string): string {
 	const el = target.element
 	if (target.disabled) throw new ActionError(`Element ${target.index} is disabled`)
 	highlight(el)
 
-	if (el instanceof (el.ownerDocument.defaultView?.HTMLInputElement ?? Object)) {
-		const input = el as HTMLInputElement
-		const proto = Object.getPrototypeOf(input)
-		const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set
-		input.focus()
-		if (setter) setter.call(input, text)
-		else input.value = text
-		dispatchInputEvents(input)
-		return `✅ Input "${text}" into element ${target.index}`
-	}
-	if (el instanceof (el.ownerDocument.defaultView?.HTMLTextAreaElement ?? Object)) {
-		const textarea = el as HTMLTextAreaElement
-		textarea.focus()
-		textarea.value = text
-		dispatchInputEvents(textarea)
+	const view = el.ownerDocument?.defaultView
+	if (
+		el instanceof (view?.HTMLInputElement ?? Object) ||
+		el instanceof (view?.HTMLTextAreaElement ?? Object)
+	) {
+		setNativeValue(el, text)
 		return `✅ Input "${text}" into element ${target.index}`
 	}
 	if ((el as HTMLElement).isContentEditable) {
