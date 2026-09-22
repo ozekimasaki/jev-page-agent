@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>jev-page-agent demo</title>
+		<style>
+			* { box-sizing: border-box; font-family: ui-monospace, monospace; }
+			body { margin: 0; display: grid; grid-template-columns: 320px 1fr; height: 100vh; }
+			aside { border-right: 1px solid #ddd; padding: 16px; overflow-y: auto; }
+			main { padding: 24px; overflow-y: auto; }
+			label { display: block; font-size: 12px; margin: 12px 0 4px; }
+			input, select, textarea, button { width: 100%; padding: 8px; font-size: 13px; }
+			button { cursor: pointer; background: #111; color: #fff; border: 0; margin-top: 12px; }
+			button.secondary { background: #eee; color: #111; }
+			#log { margin-top: 16px; font-size: 11px; white-space: pre-wrap; }
+			.step { border-left: 3px solid #6366f1; padding: 4px 8px; margin: 6px 0; background: #f6f6ff; }
+			.err { border-color: #e11d48; background: #fff1f2; }
+			.target { border: 1px solid #ccc; padding: 20px; max-width: 480px; border-radius: 8px; }
+			.scrollbox { height: 120px; overflow-y: auto; border: 1px solid #eee; margin-top: 12px; padding: 8px; }
+			.note { color: #666; font-size: 11px; }
+		</style>
+	</head>
+	<body>
+		<aside>
+			<h2>jev-page-agent</h2>
+			<label>Provider</label>
+			<select id="provider">
+				<option value="mock">mock (offline)</option>
+				<option value="typesafe">typesafe</option>
+				<option value="cloudflare">cloudflare</option>
+			</select>
+			<label>API key / token</label>
+			<input id="apiKey" type="password" placeholder="TYPESAFE_API_KEY or CF token" />
+			<label>Account ID (cloudflare only)</label>
+			<input id="accountId" placeholder="cf account id" />
+			<label>Task</label>
+			<textarea id="task" rows="4">type "Alice Tanaka" into the name field, select "USA" as the country, then click Sign up</textarea>
+			<button id="run">Run</button>
+			<button id="stop" class="secondary">Stop</button>
+			<div id="log"></div>
+		</aside>
+		<main>
+			<h1>Demo target page</h1>
+			<div class="target">
+				<label>Your name</label>
+				<input id="name" type="text" placeholder="Full name" />
+				<label>Country</label>
+				<select id="country">
+					<option>Japan</option>
+					<option>USA</option>
+					<option>France</option>
+				</select>
+				<label><input id="subscribe" type="checkbox" /> Subscribe to newsletter</label>
+				<button id="signup">Sign up</button>
+				<div class="scrollbox" data-scrollable>
+					<div id="list"></div>
+				</div>
+				<p id="status" class="note"></p>
+			</div>
+		</main>
+		<script type="module">
+			import { JevPageAgent } from '../dist/index.js'
+
+			document.getElementById('list').innerHTML = Array.from(
+				{ length: 40 },
+				(_, i) => `<div>Item ${i + 1} — scrollable filler</div>`
+			).join('')
+
+			document.getElementById('signup').addEventListener('click', () => {
+				const name = document.getElementById('name').value
+				const country = document.getElementById('country').value
+				const sub = document.getElementById('subscribe').checked
+				document.getElementById('status').textContent =
+					`Signed up: ${name || '(no name)'} / ${country} / subscribe=${sub}`
+			})
+
+			const log = document.getElementById('log')
+			const addLog = (html, cls = 'step') => {
+				const div = document.createElement('div')
+				div.className = cls
+				div.textContent = html
+				log.prepend(div)
+			}
+
+			// Offline evaluator for the demo: a deterministic script that walks the
+			// form top to bottom. Real runs use a provider instead.
+			const mockScript = ['input_text', 'select_option', 'click', 'click', 'done']
+			let mockStep = 0
+			const mockEvaluate = async (req) => {
+				const action = mockScript[Math.min(mockStep++, mockScript.length - 1)]
+				const answers = {
+					action: { type: 'choice', choice: action, confidence: 0.98, probabilities: {} },
+				}
+				for (const [name, q] of Object.entries(req.questions)) {
+					if (name === 'action') continue
+					if (q.type === 'noul') answers[name] = { type: 'noul', noul: 1 }
+					else if (q.type === 'choice') {
+						const keys = Object.keys(q.criteria)
+						let pick = keys[0]
+						if (name === 'element') {
+							const wanted =
+								action === 'input_text'
+									? /id=name/
+									: action === 'select_option'
+										? /id=country/
+										: /id=signup/
+							pick = keys.find((k) => wanted.test(q.criteria[k])) ?? keys[0]
+						}
+						if (name === 'text_input_text_text') pick = 'c0'
+						if (name === 'text_select_option_text') {
+							const k = keys.find((k) => /usa/i.test(q.criteria[k]))
+							pick = k ?? 'c0'
+						}
+						answers[name] = { type: 'choice', choice: pick, confidence: 0.9, probabilities: {} }
+					}
+				}
+				await new Promise((r) => setTimeout(r, 120)) // simulate latency
+				return { model: 'mock-jev', answers, usage: { input_tokens: 500, output_tokens: 60 } }
+			}
+
+			let agent = null
+			document.getElementById('run').addEventListener('click', async () => {
+				mockStep = 0
+				log.innerHTML = ''
+				const provider = document.getElementById('provider').value
+				const config = {
+					stepDelay: 0.1,
+					verbose: true,
+					onAskUser: async (q) => window.prompt(q) ?? '',
+					// Snapshot only the target form — the sidebar controls
+					// (provider select, task textarea, run/stop) must never be
+					// element candidates for a real evaluator either.
+					root: document.querySelector('.target'),
+				}
+				if (provider === 'mock') config.evaluate = mockEvaluate
+				else if (provider === 'typesafe')
+					config.apiKey = document.getElementById('apiKey').value
+				else {
+					config.provider = 'cloudflare'
+					config.apiKey = document.getElementById('apiKey').value
+					config.accountId = document.getElementById('accountId').value
+				}
+				agent = new JevPageAgent(config)
+				agent.addEventListener('historychange', () => {
+					const last = agent.history[agent.history.length - 1]
+					if (!last) return
+					if (last.type === 'step')
+						addLog(
+							`step ${last.step}: ${last.action} ${JSON.stringify(last.params ?? {})} ` +
+								`→ ${last.result ?? ''} (conf: ${JSON.stringify(last.confidences ?? {})})`,
+							last.ok === false ? 'step err' : 'step'
+						)
+					else if (last.type === 'error') addLog(`error: ${last.message}`, 'step err')
+				})
+				const result = await agent.execute(document.getElementById('task').value)
+				addLog(`RESULT success=${result.success}: ${result.data}`, result.success ? 'step' : 'step err')
+			})
+			document.getElementById('stop').addEventListener('click', () => agent?.stop())
+		</script>
+	</body>
+</html>

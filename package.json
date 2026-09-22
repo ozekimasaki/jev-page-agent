@@ -1,0 +1,40 @@
+{
+	"name": "jev-page-agent",
+	"version": "0.1.0",
+	"description": "In-page GUI agent powered by TypeSafe's Jev — fast structured decisions instead of a generative LLM.",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist/",
+		"src/"
+	],
+	"sideEffects": false,
+	"license": "MIT",
+	"keywords": [
+		"jev",
+		"typesafe",
+		"page-agent",
+		"browser-automation",
+		"agent",
+		"gui-agent"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "vitest run",
+		"demo": "npm run build && npx serve . -l 8080"
+	},
+	"devDependencies": {
+		"jsdom": "^24.1.0",
+		"typescript": "^5.6.0",
+		"vitest": "^2.1.0"
+	}
+}
