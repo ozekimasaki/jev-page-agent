@@ -46,6 +46,18 @@ export { extractAnswerCandidates, extractTextCandidates } from './candidates.js'
 export { cloudflareTransport, typesafeTransport } from './jev/transports.js'
 export type { CloudflareTransportConfig, TypeSafeTransportConfig } from './jev/transports.js'
 
+export {
+	FallbackError,
+	openaiCompatibleFallback,
+	parseFallbackPlan,
+} from './fallback.js'
+export type {
+	FallbackContext,
+	FallbackPlanner,
+	FallbackReason,
+	OpenAICompatibleFallbackOptions,
+} from './fallback.js'
+
 export { JevApiError } from './jev/types.js'
 export type {
 	ChoiceAnswer,

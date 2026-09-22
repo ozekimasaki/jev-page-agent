@@ -17,6 +17,7 @@ import {
 } from './actions.js'
 import { extractAnswerCandidates, extractTextCandidates } from './candidates.js'
 import { snapshotPage, type PageSnapshot } from './dom.js'
+import type { FallbackPlanner, FallbackReason } from './fallback.js'
 import { cloudflareTransport } from './jev/transports.js'
 import type { JevEvaluator } from './jev/types.js'
 import { typesafeTransport } from './jev/transports.js'
@@ -27,7 +28,10 @@ import {
 	synthesizePlan,
 	type ActionSpec,
 	type HistoryEntry,
+	type PlanContext,
 	type PlannedAction,
+	type PlanRequest,
+	type SynthContext,
 } from './planner.js'
 
 export interface ActionRunContext {
@@ -80,6 +84,21 @@ export interface JevPageAgentConfig {
 	/** required to enable the `ask_user` action */
 	onAskUser?: (question: string, opts: { signal: AbortSignal }) => Promise<string>
 
+	/**
+	 * Generative-LLM fallback planner for decisions jev cannot make:
+	 * unresolved text params (`__none__`), undecodable plans, and — when
+	 * `confidenceThreshold` is set — low-confidence picks. See
+	 * `openaiCompatibleFallback` for a ready-made OpenAI-compatible one
+	 * (DeepSeek / Qwen / OpenRouter / ...).
+	 */
+	fallback?: FallbackPlanner
+	/**
+	 * When `fallback` is configured and this is > 0, a plan whose lowest
+	 * answered-question confidence is below it is re-decided by the fallback.
+	 * @default 0 (jev confidences are advisory only)
+	 */
+	confidenceThreshold?: number
+
 	/** log decisions and confidences to console */
 	verbose?: boolean
 }
@@ -124,12 +143,14 @@ export class JevPageAgent extends EventTarget {
 	#abort = new AbortController()
 	#running: Promise<void> = Promise.resolve()
 	#evaluate: JevEvaluator
+	#fallback?: FallbackPlanner
 
 	constructor(config: JevPageAgentConfig) {
 		super()
 		this.config = config
 		this.onAskUser = config.onAskUser
 		this.#evaluate = config.evaluate ?? this.#buildEvaluator()
+		this.#fallback = config.fallback
 
 		this.actions = builtinActions()
 		for (const [name, action] of Object.entries(config.actions ?? {})) {
@@ -265,9 +286,24 @@ export class JevPageAgent extends EventTarget {
 						plan = synthesizePlan(request, evaluation.answers, ctx)
 					} catch (error) {
 						if (error instanceof ParamUnresolvedError) {
-							plan = this.#fallbackAskUser(error, ctx)
+							plan =
+								(await this.#fallbackPlan('unresolved_param', request, ctx, signal)) ??
+								this.#fallbackAskUser(error, ctx)
+						} else if (error instanceof JevPlanError) {
+							const fallbackPlan = await this.#fallbackPlan('plan_error', request, ctx, signal)
+							if (!fallbackPlan) throw error
+							plan = fallbackPlan
 						} else {
 							throw error
+						}
+					}
+
+					const threshold = this.config.confidenceThreshold ?? 0
+					if (this.#fallback && threshold > 0) {
+						const lowest = Math.min(...Object.values(plan.confidences))
+						if (lowest < threshold) {
+							plan =
+								(await this.#fallbackPlan('low_confidence', request, ctx, signal)) ?? plan
 						}
 					}
 
@@ -351,6 +387,46 @@ export class JevPageAgent extends EventTarget {
 		}
 
 		return result
+	}
+
+	/**
+	 * Ask the configured generative fallback for a plan. Returns null when no
+	 * fallback is configured or it fails / returns nothing usable — callers
+	 * keep their built-in behavior in that case. `computed` params are filled
+	 * here because they depend on the live snapshot, not on the model.
+	 */
+	async #fallbackPlan(
+		reason: FallbackReason,
+		request: PlanRequest,
+		ctx: PlanContext,
+		signal: AbortSignal
+	): Promise<PlannedAction | null> {
+		if (!this.#fallback) return null
+		try {
+			const plan = await this.#fallback(
+				{ task: ctx.task, step: ctx.step, reason, state: request.state, actions: this.actions },
+				signal
+			)
+			if (!plan) return null
+			const spec = this.actions[plan.name]
+			if (!spec) {
+				throw new Error(`fallback chose unknown action "${plan.name}"`)
+			}
+			const synthCtx: SynthContext = { task: ctx.task, snapshot: ctx.snapshot, params: plan.params }
+			for (const [paramName, param] of Object.entries(spec.params ?? {})) {
+				if (param.kind === 'computed') plan.params[paramName] = param.compute(synthCtx)
+			}
+			this.#emitActivity({ type: 'fallback', reason, action: plan.name, params: plan.params })
+			return plan
+		} catch (error) {
+			this.history.push({
+				type: 'error',
+				message: `fallback planner failed (${reason}): ${String(error)}`,
+				raw: error,
+			})
+			this.#emitHistoryChange()
+			return null
+		}
 	}
 
 	/**

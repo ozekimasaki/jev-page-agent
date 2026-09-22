@@ -106,6 +106,34 @@ const agent = new JevPageAgent({
 
 The planner automatically adds `opt_open_tab_label` as a `choice` question in the next evaluation.
 
+## LLM fallback (fast path / slow path)
+
+jev decides what it can — picks action, element, candidate values — in one cheap call per step. For what it structurally cannot decide, you can plug in a generative LLM as a fallback planner:
+
+```ts
+import { JevPageAgent, openaiCompatibleFallback } from 'jev-page-agent'
+
+const agent = new JevPageAgent({
+  evaluate: jevEvaluator,
+  fallback: openaiCompatibleFallback({
+    apiKey: process.env.DEEPSEEK_API_KEY!,
+    baseURL: 'https://api.deepseek.com',          // any OpenAI-compatible endpoint
+    model: 'deepseek-chat',                       // or 'qwen-plus', 'qwen/qwen3-32b', ...
+  }),
+  confidenceThreshold: 0.4,                        // optional: re-decide low-confidence picks too
+})
+```
+
+The fallback fires when:
+
+- a required text param resolves to `__none__` (the value isn't among candidates — jev can't invent it; previously this went to `ask_user`),
+- `confidenceThreshold` is set and the plan's lowest answer confidence is below it,
+- the jev plan fails to decode (`JevPlanError`).
+
+It receives the same `state` document jev saw plus the action specs, and returns `{action, params}` (strict JSON). A `null` return keeps the built-in behavior (`ask_user` / error path). `computed` params are still filled in code afterwards.
+
+Cost note (per 1M tokens, official prices): DeepSeek V4 Flash $0.14 in / $0.28 out vs Qwen3.8 Flash $0.15 / $0.47 — DeepSeek is the cheaper fallback, and a fallback call is ~$0.0005 (state ~3k tokens in, ~200 out).
+
 ## Config reference
 
 | Option | Default | Purpose |
@@ -117,6 +145,8 @@ The planner automatically adds `opt_open_tab_label` as a `choice` question in th
 | `root` | `document.body` | subtree to observe |
 | `blacklist` / `extraSelectors` | — | element filtering |
 | `onAskUser` | — | `async (question) => string` |
+| `fallback` | — | `FallbackPlanner` — generative-LLM planner for decisions jev can't make |
+| `confidenceThreshold` | 0 | if >0 and `fallback` set, re-decide plans below this confidence |
 | `verbose` | false | extra event detail |
 
 ## Demo
