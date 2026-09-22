@@ -80,9 +80,13 @@ export function selectOption(target: IndexedElement, optionText: string): string
 		throw new ActionError(`Element ${target.index} is not a <select> (${target.tagName})`)
 	}
 	const select = el as HTMLSelectElement
-	const option = Array.from(select.options).find(
-		(o) => o.text.trim().toLowerCase() === optionText.trim().toLowerCase()
-	)
+	// Exact match first; fall back to the option text being a prefix of the
+	// requested string (models often echo extra words, e.g. "USA as the country").
+	const wanted = optionText.trim().toLowerCase()
+	const options = Array.from(select.options)
+	const option =
+		options.find((o) => o.text.trim().toLowerCase() === wanted) ??
+		options.find((o) => o.text.trim() && wanted.startsWith(o.text.trim().toLowerCase()))
 	if (!option) {
 		const available = Array.from(select.options)
 			.map((o) => o.text.trim())

@@ -35,7 +35,7 @@
 			<label>Account ID (cloudflare only)</label>
 			<input id="accountId" placeholder="cf account id" />
 			<label>Task</label>
-			<textarea id="task" rows="4">type "Alice Tanaka" into the name field, select USA as the country, then click Sign up</textarea>
+			<textarea id="task" rows="4">type "Alice Tanaka" into the name field, select "USA" as the country, then click Sign up</textarea>
 			<button id="run">Run</button>
 			<button id="stop" class="secondary">Stop</button>
 			<div id="log"></div>
@@ -101,10 +101,10 @@
 						if (name === 'element') {
 							const wanted =
 								action === 'input_text'
-									? /name|text/i
+									? /id=name/
 									: action === 'select_option'
-										? /select|country/i
-										: /sign up|submit/i
+										? /id=country/
+										: /id=signup/
 							pick = keys.find((k) => wanted.test(q.criteria[k])) ?? keys[0]
 						}
 						if (name === 'text_input_text_text') pick = 'c0'
