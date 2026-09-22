@@ -116,9 +116,9 @@ import { JevPageAgent, openaiCompatibleFallback } from 'jev-page-agent'
 const agent = new JevPageAgent({
   evaluate: jevEvaluator,
   fallback: openaiCompatibleFallback({
-    apiKey: process.env.DEEPSEEK_API_KEY!,
-    baseURL: 'https://api.deepseek.com',          // any OpenAI-compatible endpoint
-    model: 'deepseek-chat',                       // or 'qwen-plus', 'qwen/qwen3-32b', ...
+    apiKey: process.env.DASHSCOPE_API_KEY!,
+    baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', // any OpenAI-compatible endpoint
+    model: 'qwen3.8-flash',                       // or 'deepseek-flash', 'qwen/qwen3-32b', ...
   }),
   confidenceThreshold: 0.4,                        // optional: re-decide low-confidence picks too
 })
@@ -132,7 +132,7 @@ The fallback fires when:
 
 It receives the same `state` document jev saw plus the action specs, and returns `{action, params}` (strict JSON). A `null` return keeps the built-in behavior (`ask_user` / error path). `computed` params are still filled in code afterwards.
 
-Cost note (per 1M tokens, official prices): DeepSeek V4 Flash $0.14 in / $0.28 out vs Qwen3.8 Flash $0.15 / $0.47 — DeepSeek is the cheaper fallback, and a fallback call is ~$0.0005 (state ~3k tokens in, ~200 out).
+Cost note (per 1M tokens, official prices): **Qwen3.8-Flash $0.15 in / $0.47 out** vs DeepSeek V4.1-Flash $0.15–0.30 / $0.60–1.20 (peak/off-peak) — Qwen3.8-Flash is the cheaper fallback at equal input and lower output price, with flat pricing (no peak windows). A fallback call costs ~$0.0005 (state ~3k tokens in, ~200 out).
 
 ## Config reference
 
